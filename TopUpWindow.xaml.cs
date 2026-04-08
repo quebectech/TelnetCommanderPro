@@ -26,9 +26,12 @@ namespace TelnetCommanderPro
             string phone = PhoneInput.Text.Trim();
             string amountStr = AmountInput.Text.Trim();
 
-            if (string.IsNullOrEmpty(phone) || phone.Length < 9)
+            // Validate Kenyan phone number
+            string normalized = phone.Replace(" ", "").Replace("+", "");
+            if (normalized.StartsWith("0")) normalized = "254" + normalized.Substring(1);
+            if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, @"^254(7|1)\d{8}$"))
             {
-                ShowStatus("Please enter a valid phone number.", "#DC3545");
+                ShowStatus("Invalid phone number. Use format 07XXXXXXXX or 01XXXXXXXX", "#DC3545");
                 return;
             }
 

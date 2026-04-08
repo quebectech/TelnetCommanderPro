@@ -78,10 +78,15 @@ app.post('/topup', async (req, res) => {
         return res.status(400).json({ error: 'Minimum top-up is KES 100' });
     }
 
-    // Normalize phone: 07XX → 2547XX
-    let msisdn = phone.toString().replace(/\s/g, '');
+    // Normalize phone: 07XX / 01XX → 2547XX / 2541XX
+    let msisdn = phone.toString().replace(/\s/g, '').replace(/[^0-9]/g, '');
     if (msisdn.startsWith('0')) msisdn = '254' + msisdn.slice(1);
     if (msisdn.startsWith('+')) msisdn = msisdn.slice(1);
+
+    // Validate Kenyan number: 2547XXXXXXXX or 2541XXXXXXXX (12 digits)
+    if (!/^254(7|1)\d{8}$/.test(msisdn)) {
+        return res.status(400).json({ error: 'Invalid Kenyan phone number. Use format 07XXXXXXXX or 01XXXXXXXX' });
+    }
 
     try {
         const token = await getMpesaToken();
@@ -117,8 +122,9 @@ app.post('/topup', async (req, res) => {
             message: 'STK Push sent. Check your phone.'
         });
     } catch (err) {
-        const msg = err.response?.data?.errorMessage || err.message;
-        res.status(500).json({ error: msg });
+        const msg = err.response?.data?.errorMessage || err.response?.data || err.message;
+        console.error('STK Push error:', JSON.stringify(err.response?.data || err.message));
+        res.status(500).json({ error: typeof msg === 'object' ? JSON.stringify(msg) : msg });
     }
 });
 
