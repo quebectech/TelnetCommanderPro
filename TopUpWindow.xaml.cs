@@ -41,14 +41,15 @@ namespace TelnetCommanderPro
                 return;
             }
 
-            SetBusy(true, "⏳ Sending request to Safaricom...");
+            SetBusy(true, "⏳ Connecting to server (may take up to 60s on first use)...");
 
             var result = await WalletManager.InitiateTopUpAsync(_hardwareId, phone, amount);
 
             if (!result.Success || result.CheckoutRequestId == null)
             {
                 SetBusy(false);
-                ShowStatus($"❌ Failed: {result.Error ?? result.Message}", "#DC3545");
+                string errMsg = result.Error ?? result.Message ?? "Unknown error";
+                ShowStatus($"❌ {errMsg}", "#DC3545");
                 return;
             }
 
