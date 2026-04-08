@@ -40,6 +40,7 @@ namespace TelnetCommanderPro
             LoadLicenseInfo();
             ApplyLicenseRestrictions();
             LoadOperations("V6");
+            UpdateWalletDisplay(); // show KES 0.00 immediately
 
             // On startup: restore count from JSONBin if local is 0 (e.g. after fresh install/update)
             // then sync any pending offline ops, and load wallet balance
@@ -128,8 +129,7 @@ namespace TelnetCommanderPro
 
         private void UpdateWalletDisplay()
         {
-            if (WalletBorder == null) return;
-            WalletBorder.Visibility = Visibility.Visible;
+            if (WalletBalanceText == null) return;
             WalletBalanceText.Text = $"KES {_walletBalance:F2}";
         }
 
