@@ -51,8 +51,9 @@ namespace TelnetCommanderPro
                     await _licenseManager.RestoreOperationCountFromOnlineIfNeeded();
                     await _licenseManager.TrySyncOnConnectivityRestored();
                     
-                    // Load wallet balance
+                    // Wake backend + load wallet balance in parallel
                     string hwid = _licenseManager.GetHardwareId();
+                    await WalletManager.WakeUpServerAsync();
                     _walletBalance = await WalletManager.GetBalanceAsync(hwid);
                     
                     Dispatcher.Invoke(() =>

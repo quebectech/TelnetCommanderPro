@@ -41,7 +41,12 @@ namespace TelnetCommanderPro
                 return;
             }
 
-            SetBusy(true, "⏳ Connecting to server (may take up to 60s on first use)...");
+            SetBusy(true, "⏳ Waking up server, please wait...");
+
+            // Ping server first to wake Render from sleep (free tier sleeps after inactivity)
+            await WalletManager.WakeUpServerAsync();
+
+            SetBusy(true, "⏳ Sending request to Safaricom...");
 
             var result = await WalletManager.InitiateTopUpAsync(_hardwareId, phone, amount);
 

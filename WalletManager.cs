@@ -9,7 +9,13 @@ namespace TelnetCommanderPro
     public class WalletManager
     {
         private const string BackendUrl = "https://telnetcommanderpro.onrender.com";
-        private static readonly HttpClient _client = new HttpClient { Timeout = TimeSpan.FromSeconds(65) };
+        private static readonly HttpClient _client = new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+
+        // Ping the server to wake it up before making real requests
+        public static async Task WakeUpServerAsync()
+        {
+            try { await _client.GetStringAsync($"{BackendUrl}/"); } catch { }
+        }
 
         public static async Task<decimal> GetBalanceAsync(string hardwareId)
         {
