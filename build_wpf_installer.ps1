@@ -1,5 +1,5 @@
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Building WPF Installer v1.2.3" -ForegroundColor Cyan
+Write-Host "  Building WPF Installer v2.0.0" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -57,7 +57,7 @@ if (!(Test-Path "installer_output")) {
 }
 
 $installerSource = "WPFInstaller\bin\Release\net6.0-windows\win-x64\publish\TelnetCommanderProInstaller.exe"
-$installerDest = "installer_output\TelnetCommanderPro_Setup_v1.2.3.exe"
+$installerDest = "installer_output\TelnetCommanderPro_Setup_v2.0.0.exe"
 
 Copy-Item $installerSource $installerDest -Force
 
