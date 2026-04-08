@@ -20,11 +20,16 @@ const pendingPayments = {};
 
 async function getMpesaToken() {
     const auth = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString('base64');
-    const res = await axios.get(
-        'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-        { headers: { Authorization: `Basic ${auth}` } }
-    );
-    return res.data.access_token;
+    try {
+        const res = await axios.get(
+            'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+            { headers: { Authorization: `Basic ${auth}` } }
+        );
+        return res.data.access_token;
+    } catch (err) {
+        console.error('Token error:', JSON.stringify(err.response?.data || err.message));
+        throw new Error(`Token failed: ${JSON.stringify(err.response?.data || err.message)}`);
+    }
 }
 
 function getTimestamp() {
@@ -122,9 +127,14 @@ app.post('/topup', async (req, res) => {
             message: 'STK Push sent. Check your phone.'
         });
     } catch (err) {
-        const msg = err.response?.data?.errorMessage || err.response?.data || err.message;
-        console.error('STK Push error:', JSON.stringify(err.response?.data || err.message));
-        res.status(500).json({ error: typeof msg === 'object' ? JSON.stringify(msg) : msg });
+        const safarData = err.response?.data;
+        console.error('STK Push error:', JSON.stringify(safarData || err.message));
+        // Return the full Safaricom error so we can diagnose
+        const msg = safarData?.errorMessage || safarData?.ResultDesc ||
+                    safarData?.requestId ||
+                    (typeof safarData === 'object' ? JSON.stringify(safarData) : null) ||
+                    err.message;
+        res.status(500).json({ error: msg, raw: safarData });
     }
 });
 
