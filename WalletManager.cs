@@ -45,6 +45,40 @@ namespace TelnetCommanderPro
             }
         }
 
+        public static async Task<GenerateTokenResult> GeneratePaymentTokenAsync(string hardwareId)
+        {
+            try
+            {
+                var payload = JsonConvert.SerializeObject(new { hardwareId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                var res = await _client.PostAsync($"{BackendUrl}/generate-token", content);
+                var body = await res.Content.ReadAsStringAsync();
+                var data = JsonConvert.DeserializeObject<GenerateTokenResult>(body);
+                return data ?? new GenerateTokenResult { Error = "No response" };
+            }
+            catch (Exception ex)
+            {
+                return new GenerateTokenResult { Error = ex.Message };
+            }
+        }
+
+        public static async Task<VerifyPaymentResult> VerifyPaymentAsync(string token, string hardwareId)
+        {
+            try
+            {
+                var payload = JsonConvert.SerializeObject(new { token, hardwareId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                var res = await _client.PostAsync($"{BackendUrl}/verify-payment", content);
+                var body = await res.Content.ReadAsStringAsync();
+                var data = JsonConvert.DeserializeObject<VerifyPaymentResult>(body);
+                return data ?? new VerifyPaymentResult { Success = false };
+            }
+            catch (Exception ex)
+            {
+                return new VerifyPaymentResult { Success = false, Error = ex.Message };
+            }
+        }
+
         public static async Task<DeductResult> DeductAsync(string hardwareId, string routerType)
         {
             try
@@ -76,6 +110,23 @@ namespace TelnetCommanderPro
         [JsonProperty("success")] public bool Success { get; set; }
         [JsonProperty("checkoutRequestId")] public string? CheckoutRequestId { get; set; }
         [JsonProperty("message")] public string? Message { get; set; }
+        [JsonProperty("error")] public string? Error { get; set; }
+    }
+
+    public class GenerateTokenResult
+    {
+        [JsonProperty("token")] public string? Token { get; set; }
+        [JsonProperty("paybill")] public string? Paybill { get; set; }
+        [JsonProperty("instructions")] public string? Instructions { get; set; }
+        [JsonProperty("error")] public string? Error { get; set; }
+        public bool Success => Token != null && Error == null;
+    }
+
+    public class VerifyPaymentResult
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("newBalance")] public decimal NewBalance { get; set; }
+        [JsonProperty("amount")] public decimal Amount { get; set; }
         [JsonProperty("error")] public string? Error { get; set; }
     }
 

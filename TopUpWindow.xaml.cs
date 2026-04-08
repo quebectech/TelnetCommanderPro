@@ -8,6 +8,9 @@ namespace TelnetCommanderPro
     public partial class TopUpWindow : Window
     {
         private readonly string _hardwareId;
+        private string? _currentToken;
+        private decimal _requestedAmount;
+        private bool _inPaymentStep = false;
         public decimal FinalBalance { get; private set; }
 
         public TopUpWindow(string hardwareId, decimal currentBalance)
@@ -21,88 +24,78 @@ namespace TelnetCommanderPro
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-        private async void Pay_Click(object sender, RoutedEventArgs e)
+        private async void Action_Click(object sender, RoutedEventArgs e)
         {
-            string phone = PhoneInput.Text.Trim();
-            string amountStr = AmountInput.Text.Trim();
+            if (!_inPaymentStep)
+                await GenerateToken();
+            else
+                await VerifyPayment();
+        }
 
-            // Validate Kenyan phone number
-            string normalized = phone.Replace(" ", "").Replace("+", "");
-            if (normalized.StartsWith("0")) normalized = "254" + normalized.Substring(1);
-            if (!System.Text.RegularExpressions.Regex.IsMatch(normalized, @"^254(7|1)\d{8}$"))
-            {
-                ShowStatus("Invalid phone number. Use format 07XXXXXXXX or 01XXXXXXXX", "#DC3545");
-                return;
-            }
-
-            if (!decimal.TryParse(amountStr, out decimal amount) || amount < 100)
+        private async Task GenerateToken()
+        {
+            if (!decimal.TryParse(AmountInput.Text.Trim(), out decimal amount) || amount < 100)
             {
                 ShowStatus("Minimum amount is KES 100.", "#DC3545");
                 return;
             }
+            _requestedAmount = amount;
 
-            SetBusy(true, "⏳ Waking up server, please wait...");
+            SetBusy(true, "⏳ Generating payment code...");
 
-            // Ping server first to wake Render from sleep (free tier sleeps after inactivity)
-            await WalletManager.WakeUpServerAsync();
-
-            SetBusy(true, "⏳ Sending request to Safaricom...");
-
-            var result = await WalletManager.InitiateTopUpAsync(_hardwareId, phone, amount);
-
-            if (!result.Success || result.CheckoutRequestId == null)
-            {
-                SetBusy(false);
-                string errMsg = result.Error ?? result.Message ?? "Unknown error";
-                ShowStatus($"❌ {errMsg}", "#DC3545");
-                return;
-            }
-
-            // STK Push sent - now show the PIN prompt message
-            ShowStatus("📱 Check your phone and enter your M-Pesa PIN to complete the payment.", "#0078D4");
-            SetBusy(true, "⏳ Waiting for payment confirmation...");
-
-            // Poll for balance update for up to 90 seconds
-            decimal balanceBefore = FinalBalance;
-            bool confirmed = false;
-
-            for (int i = 0; i < 18; i++) // 18 × 5s = 90s
-            {
-                int secondsLeft = 90 - (i * 5);
-                ShowStatus($"📱 Enter your M-Pesa PIN on your phone to complete payment.\n⏳ Waiting for confirmation... ({secondsLeft}s)", "#0078D4");
-                await Task.Delay(5000);
-                decimal newBalance = await WalletManager.GetBalanceAsync(_hardwareId);
-
-                if (newBalance > balanceBefore)
-                {
-                    FinalBalance = newBalance;
-                    confirmed = true;
-                    break;
-                }
-            }
+            var result = await WalletManager.GeneratePaymentTokenAsync(_hardwareId);
 
             SetBusy(false);
 
-            if (confirmed)
+            if (!result.Success || result.Token == null)
             {
-                ShowStatus($"✅ Top-up successful! New balance: KES {FinalBalance:F2}", "#28A745");
-                CurrentBalanceText.Text = $"KES {FinalBalance:F2}";
-                PayButton.IsEnabled = false;
-                PayButton.Content = "Done";
+                ShowStatus($"❌ {result.Error ?? "Failed to generate token"}", "#DC3545");
+                return;
+            }
 
-                await Task.Delay(2000);
+            _currentToken = result.Token;
+
+            // Show payment instructions
+            AmountPanel.Visibility = Visibility.Collapsed;
+            PaymentPanel.Visibility = Visibility.Visible;
+            PaybillText.Text = result.Paybill ?? "4167789";
+            TokenText.Text = result.Token;
+            AmountDisplayText.Text = $"KES {amount:F0}";
+
+            ActionButton.Content = "✅ I've Paid - Verify";
+            _inPaymentStep = true;
+
+            ShowStatus("Send the M-Pesa payment then click Verify.", "#0078D4");
+        }
+
+        private async Task VerifyPayment()
+        {
+            if (_currentToken == null) return;
+
+            SetBusy(true, "⏳ Verifying payment...");
+
+            var result = await WalletManager.VerifyPaymentAsync(_currentToken, _hardwareId);
+
+            SetBusy(false);
+
+            if (result.Success)
+            {
+                FinalBalance = result.NewBalance;
+                ShowStatus($"✅ Payment confirmed! KES {result.Amount:F0} added. New balance: KES {FinalBalance:F2}", "#28A745");
+                ActionButton.IsEnabled = false;
+                ActionButton.Content = "Done ✓";
+                await Task.Delay(2500);
                 Close();
             }
             else
             {
-                ShowStatus("Payment not confirmed yet. Please check your M-Pesa messages and try again.", "#E67E22");
-                PayButton.IsEnabled = true;
+                ShowStatus($"❌ {result.Error}", "#DC3545");
             }
         }
 
         private void SetBusy(bool busy, string? message = null)
         {
-            PayButton.IsEnabled = !busy;
+            ActionButton.IsEnabled = !busy;
             Spinner.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
             if (message != null) ShowStatus(message, "#0078D4");
         }
