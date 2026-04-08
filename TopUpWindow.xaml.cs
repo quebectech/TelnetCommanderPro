@@ -41,18 +41,20 @@ namespace TelnetCommanderPro
                 return;
             }
 
-            SetBusy(true, "Sending M-Pesa request to your phone...");
+            SetBusy(true, "⏳ Sending request to Safaricom...");
 
             var result = await WalletManager.InitiateTopUpAsync(_hardwareId, phone, amount);
 
             if (!result.Success || result.CheckoutRequestId == null)
             {
                 SetBusy(false);
-                ShowStatus($"Failed: {result.Error ?? result.Message}", "#DC3545");
+                ShowStatus($"❌ Failed: {result.Error ?? result.Message}", "#DC3545");
                 return;
             }
 
-            ShowStatus("✅ Check your phone and enter your M-Pesa PIN.\nWaiting for confirmation...", "#0078D4");
+            // STK Push sent - now show the PIN prompt message
+            ShowStatus("📱 Check your phone and enter your M-Pesa PIN to complete the payment.", "#0078D4");
+            SetBusy(true, "⏳ Waiting for payment confirmation...");
 
             // Poll for balance update for up to 90 seconds
             decimal balanceBefore = FinalBalance;
@@ -60,6 +62,8 @@ namespace TelnetCommanderPro
 
             for (int i = 0; i < 18; i++) // 18 × 5s = 90s
             {
+                int secondsLeft = 90 - (i * 5);
+                ShowStatus($"📱 Enter your M-Pesa PIN on your phone to complete payment.\n⏳ Waiting for confirmation... ({secondsLeft}s)", "#0078D4");
                 await Task.Delay(5000);
                 decimal newBalance = await WalletManager.GetBalanceAsync(_hardwareId);
 
