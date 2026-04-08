@@ -127,6 +127,35 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,100,0">
                         <Button Content="⚙ Settings" Width="120" Height="38" Click="Settings_Click" FontSize="13" Margin="0,0,10,0" Style="{StaticResource SecondaryButton}" Padding="12,0"/>
                         <Button Content="📖 Instructions" Width="140" Height="38" Click="Instructions_Click" FontSize="13" Margin="0,0,10,0" Style="{StaticResource SecondaryButton}" Padding="12,0"/>
+                        <!-- Wallet balance + top up button -->
+                        <Border Background="#E7F3FF" BorderBrush="#0078D4" BorderThickness="1" CornerRadius="8" Padding="10,0" Margin="0,0,10,0" Height="38">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="💰" FontSize="14" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock x:Name="WalletBalanceText" Text="KES 0.00" FontSize="13" FontWeight="SemiBold" Foreground="#0078D4" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <Button x:Name="TopUpButton" Content="+ Top Up" Height="26" Width="70" Click="TopUp_Click"
+                                        FontSize="11" FontWeight="SemiBold" Cursor="Hand" Foreground="White" BorderThickness="0">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#0078D4" Offset="0"/>
+                                            <GradientStop Color="#00BCF2" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
                         <Button Content="⬆ Upgrade License" Width="160" Height="38" Click="UpgradeLicense_Click" FontSize="13" Style="{StaticResource ModernButton}" Padding="12,0"/>
                     </StackPanel>
                 </Grid>
@@ -276,36 +305,7 @@
                         <Button x:Name="ExecuteSelectedButton" Content="⚡ Execute Selected" Height="42" Margin="0,0,0,8" Click="ExecuteSelected_Click" Style="{StaticResource ModernButton}" FontSize="13" IsEnabled="False" ToolTip="Execute only the selected operation from the list"/>
                         <Button x:Name="ExecuteAllButton" Content="▶ Execute All" Height="42" Margin="0,0,0,8" Click="ExecuteAll_Click" Style="{StaticResource ModernButton}" FontSize="13" IsEnabled="False" ToolTip="Execute all operations for the selected router model"/>
                         <Button x:Name="ExecutionHistoryButton" Content="📋 History" Height="42" Margin="0,0,0,8" Click="ExecutionHistory_Click" Style="{StaticResource SecondaryButton}" FontSize="13" ToolTip="View execution history and past logs"/>
-                        <Button x:Name="NewRouterButton" Content="➕ New Router" Height="42" Margin="0,0,0,8" Click="NewRouter_Click" Style="{StaticResource SecondaryButton}" FontSize="13" ToolTip="Configure a new router connection"/>
-                        <!-- Wallet balance indicator - always visible -->
-                        <Border x:Name="WalletBorder" Background="#F0F9FF" BorderBrush="#0078D4" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,4,0,4">
-                            <StackPanel>
-                                <TextBlock Text="💰 Wallet" FontSize="11" Foreground="#0078D4" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="WalletBalanceText" Text="KES 0.00" FontSize="13" FontWeight="Bold" Foreground="#1F2937" Margin="0,2,0,4"/>
-                                <Button x:Name="TopUpButton" Content="+ Top Up" Height="28" Click="TopUp_Click" FontSize="11" Cursor="Hand"
-                                        Foreground="White" BorderThickness="0">
-                                    <Button.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Color="#0078D4" Offset="0"/>
-                                            <GradientStop Color="#00BCF2" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Button.Background>
-                                    <Button.Style>
-                                        <Style TargetType="Button">
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
-                            </StackPanel>
-                        </Border>
+                        <Button x:Name="NewRouterButton" Content="➕ New Router" Height="42" Click="NewRouter_Click" Style="{StaticResource SecondaryButton}" FontSize="13" ToolTip="Configure a new router connection"/>
                     </StackPanel>
                     
                     <!-- Execution Log -->

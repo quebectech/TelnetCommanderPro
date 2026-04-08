@@ -14,7 +14,7 @@ namespace TelnetCommanderProInstaller
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             "Telnet Commander Pro");
         
-        private string _newVersion = "2.0.0";
+        private string _newVersion = "2.0.1";
         private bool isUpdate = false;
         private string? installedVersion = null;
         
