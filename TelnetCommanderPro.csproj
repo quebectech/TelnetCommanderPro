@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <Version>1.2.3</Version>
+    <AssemblyName>TelnetCommanderPro</AssemblyName>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="LicenseGenerator\**" />
+    <EmbeddedResource Remove="LicenseGenerator\**" />
+    <None Remove="LicenseGenerator\**" />
+    <Page Remove="LicenseGenerator\**" />
+    <Compile Remove="HardwareIdTool\**" />
+    <EmbeddedResource Remove="HardwareIdTool\**" />
+    <None Remove="HardwareIdTool\**" />
+    <Page Remove="HardwareIdTool\**" />
+    <Compile Remove="WPFInstaller\**" />
+    <EmbeddedResource Remove="WPFInstaller\**" />
+    <None Remove="WPFInstaller\**" />
+    <Page Remove="WPFInstaller\**" />
+    <Compile Remove="POSSystem\**" />
+    <EmbeddedResource Remove="POSSystem\**" />
+    <None Remove="POSSystem\**" />
+    <Page Remove="POSSystem\**" />
+  </ItemGroup>
+
+</Project>
