@@ -145,6 +145,28 @@ app.post('/verify-payment', async (req, res) => {
     }
 });
 
+// POST /admin/credit - manually credit a token (for when C2B callback isn't set up)
+app.post('/admin/credit', async (req, res) => {
+    const { token, amount, adminKey } = req.body;
+    
+    // Simple admin protection
+    if (adminKey !== 'TCP-ADMIN-2026') {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    if (!token || !amount) return res.status(400).json({ error: 'token and amount required' });
+    
+    const pending = pendingTokens[token.toUpperCase()];
+    if (!pending) return res.status(404).json({ error: 'Token not found or expired' });
+    
+    pending.paid = true;
+    pending.amount = parseFloat(amount);
+    pending.mpesaRef = 'MANUAL-CREDIT';
+    
+    console.log(`Manual credit: token=${token}, amount=${amount}`);
+    res.json({ success: true, message: `Token ${token} credited with KES ${amount}` });
+});
+
 // POST /mpesa/validate - Safaricom calls this before confirming C2B payment
 app.post('/mpesa/validate', (req, res) => {
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
