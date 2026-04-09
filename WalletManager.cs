@@ -79,6 +79,23 @@ namespace TelnetCommanderPro
             }
         }
 
+        public static async Task<VerifyPaymentResult> VerifyTransactionAsync(string token, string transactionCode, decimal amount, string hardwareId)
+        {
+            try
+            {
+                var payload = JsonConvert.SerializeObject(new { token, transactionCode, amount, hardwareId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                var res = await _client.PostAsync($"{BackendUrl}/verify-transaction", content);
+                var body = await res.Content.ReadAsStringAsync();
+                var data = JsonConvert.DeserializeObject<VerifyPaymentResult>(body);
+                return data ?? new VerifyPaymentResult { Success = false, Error = "No response" };
+            }
+            catch (Exception ex)
+            {
+                return new VerifyPaymentResult { Success = false, Error = ex.Message };
+            }
+        }
+
         public static async Task<VerifyPaymentResult> VerifyPaymentAsync(string token, string hardwareId)
         {
             try

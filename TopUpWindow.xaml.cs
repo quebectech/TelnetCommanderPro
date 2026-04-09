@@ -24,35 +24,18 @@ namespace TelnetCommanderPro
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-        private void ReceiptInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        // Auto-uppercase and O→0 on transaction code input
+        private void TransactionCode_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
-            if (ReceiptInput == null) return;
-            string current = ReceiptInput.Text;
-            // Replace letter O with zero, force uppercase
+            if (TransactionCodeInput == null) return;
+            string current = TransactionCodeInput.Text;
             string fixed_ = current.ToUpper().Replace("O", "0");
             if (fixed_ != current)
             {
-                int caret = ReceiptInput.CaretIndex;
-                ReceiptInput.Text = fixed_;
-                ReceiptInput.CaretIndex = Math.Min(caret, fixed_.Length);
+                int caret = TransactionCodeInput.CaretIndex;
+                TransactionCodeInput.Text = fixed_;
+                TransactionCodeInput.CaretIndex = Math.Min(caret, fixed_.Length);
             }
-        }
-
-        private void WhatsApp_Click(object sender, RoutedEventArgs e)
-        {
-            if (_currentToken == null) return;
-            string receipt = ReceiptInput?.Text?.Trim() ?? "";
-            string waMsg = Uri.EscapeDataString(
-                $"TCP Top-Up Request\n" +
-                $"Token: {_currentToken}\n" +
-                $"Amount: KES {_requestedAmount:F0}\n" +
-                $"Hardware ID: {_hardwareId}" +
-                (string.IsNullOrEmpty(receipt) ? "" : $"\nM-Pesa Receipt: {receipt}"));
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = $"https://wa.me/254741876354?text={waMsg}",
-                UseShellExecute = true
-            });
         }
 
         private async void Action_Click(object sender, RoutedEventArgs e)
@@ -73,9 +56,7 @@ namespace TelnetCommanderPro
             _requestedAmount = amount;
 
             SetBusy(true, "⏳ Generating payment code...");
-
             var result = await WalletManager.GeneratePaymentTokenAsync(_hardwareId);
-
             SetBusy(false);
 
             if (!result.Success || result.Token == null)
@@ -86,58 +67,49 @@ namespace TelnetCommanderPro
 
             _currentToken = result.Token;
 
-            // Show payment instructions
+            // Switch to payment step
             AmountPanel.Visibility = Visibility.Collapsed;
             PaymentPanel.Visibility = Visibility.Visible;
             PaybillText.Text = result.Paybill ?? "4167789";
             TokenText.Text = result.Token;
             AmountDisplayText.Text = $"KES {amount:F0}";
 
-            ActionButton.Content = "✅ I've Paid - Verify";
+            ActionButton.Content = "✅ Verify Payment";
             _inPaymentStep = true;
 
-            // Open WhatsApp with pre-filled message to admin
-            string waMsg = Uri.EscapeDataString(
-                $"TCP Top-Up Request\n" +
-                $"Token: {result.Token}\n" +
-                $"Amount: KES {amount:F0}\n" +
-                $"Hardware ID: {_hardwareId}");
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = $"https://wa.me/254741876354?text={waMsg}",
-                UseShellExecute = true
-            });
-
-            ShowStatus("WhatsApp opened - send the message to admin, then pay M-Pesa and click Verify.", "#0078D4");
+            ShowStatus("Pay M-Pesa then enter your transaction code above.", "#0078D4");
+            TransactionCodeInput.Focus();
         }
 
         private async Task VerifyPayment()
         {
             if (_currentToken == null) return;
 
-            SetBusy(true, "⏳ Verifying payment...");
+            string code = TransactionCodeInput?.Text?.Trim() ?? "";
 
-            // If user entered a receipt number, submit it for faster verification
-            string receipt = ReceiptInput?.Text?.Trim() ?? "";
-            if (!string.IsNullOrEmpty(receipt))
+            if (string.IsNullOrEmpty(code))
             {
-                var receiptResult = await WalletManager.SubmitReceiptAsync(_currentToken, receipt, _hardwareId);
-                if (receiptResult.Pending)
-                {
-                    SetBusy(false);
-                    ShowStatus("✅ Receipt submitted! Admin will verify and credit your wallet shortly. Click Verify again in a few minutes.", "#0078D4");
-                    return;
-                }
+                ShowStatus("Please enter your M-Pesa transaction code.", "#DC3545");
+                return;
             }
 
-            var result = await WalletManager.VerifyPaymentAsync(_currentToken, _hardwareId);
+            // Basic format check before hitting the server
+            if (code.Length < 8 || code.Length > 12)
+            {
+                ShowStatus("Transaction code should be 10 characters (e.g. UD9QB03GS7). Please check and try again.", "#DC3545");
+                return;
+            }
+
+            SetBusy(true, "⏳ Verifying transaction code...");
+
+            var result = await WalletManager.VerifyTransactionAsync(_currentToken, code, _requestedAmount, _hardwareId);
 
             SetBusy(false);
 
             if (result.Success)
             {
                 FinalBalance = result.NewBalance;
-                ShowStatus($"✅ Payment confirmed! KES {result.Amount:F0} added. New balance: KES {FinalBalance:F2}", "#28A745");
+                ShowStatus($"✅ Payment confirmed! KES {result.Amount:F0} added.\nNew balance: KES {FinalBalance:F2}", "#28A745");
                 ActionButton.IsEnabled = false;
                 ActionButton.Content = "Done ✓";
                 await Task.Delay(2500);
@@ -145,7 +117,14 @@ namespace TelnetCommanderPro
             }
             else
             {
-                ShowStatus($"❌ {result.Error}", "#DC3545");
+                // Show helpful error
+                string errMsg = result.Error ?? "Verification failed";
+                if (errMsg.Contains("already been used"))
+                    ShowStatus("❌ This transaction code has already been used.", "#DC3545");
+                else if (errMsg.Contains("not found") || errMsg.Contains("expired"))
+                    ShowStatus("❌ Token expired. Please close and generate a new payment code.", "#DC3545");
+                else
+                    ShowStatus($"❌ Invalid transaction code. Please check the code from your M-Pesa SMS and try again.", "#DC3545");
             }
         }
 
