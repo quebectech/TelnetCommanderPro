@@ -117,7 +117,7 @@ async function loadTokens() {
     }
     div.innerHTML = data.tokens.map(t =>
       '<div class="pending"><b>' + t.token + '</b> | ' + t.hardwareId.substring(0,12) + '... | ' +
-      (t.paid ? '✅ PAID KES ' + t.amount : '⏳ Waiting') +
+      (t.paid ? '✅ PAID KES ' + t.amount : (t.pendingReceipt ? '🧾 Receipt: <b>' + t.pendingReceipt + '</b>' : '⏳ Waiting')) +
       ' | ' + new Date(t.createdAt).toLocaleTimeString() + '</div>'
     ).join('');
   } catch(e) { div.innerHTML = 'Error: ' + e.message; }
@@ -163,6 +163,30 @@ app.post('/generate-token', async (req, res) => {
 
         res.json({ token, paybill: SHORTCODE, instructions: `Send M-Pesa to Paybill ${SHORTCODE}, Account: ${token}` });
     } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /verify-receipt - user provides M-Pesa receipt number to auto-verify payment
+app.post('/verify-receipt', async (req, res) => {
+    const { receiptNumber, token, hardwareId } = req.body;
+    if (!receiptNumber || !token || !hardwareId) {
+        return res.status(400).json({ error: 'receiptNumber, token and hardwareId required' });
+    }
+
+    try {
+        const tokens = await getTokens();
+        const entry = tokens.find(t => t.token === token.toUpperCase() && t.hardwareId === hardwareId);
+        if (!entry) return res.status(404).json({ error: 'Token not found or expired.' });
+        if (entry.paid) return res.json({ success: true, alreadyCredited: true });
+
+        // Store receipt for admin to verify, mark as pending
+        entry.pendingReceipt = receiptNumber.toUpperCase();
+        await saveTokens(tokens);
+
+        console.log(`Receipt ${receiptNumber} submitted for token ${token} by ${hardwareId.substring(0,8)}`);
+        res.json({ success: true, pending: true, message: 'Receipt submitted. Admin will verify and credit your wallet shortly.' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST /verify-payment
