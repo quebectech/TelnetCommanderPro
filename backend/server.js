@@ -261,6 +261,33 @@ app.post('/verify-payment', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /admin/test-pull - test Pull Transactions API with a receipt
+app.post('/admin/test-pull', async (req, res) => {
+    const { receipt } = req.body;
+    try {
+        const token = await getMpesaToken();
+        // Try Pull Transactions API
+        const pullRes = await axios.post(
+            'https://api.safaricom.co.ke/pulltransactions/v1/query',
+            {
+                ShortCode: SHORTCODE,
+                StartDate: new Date(Date.now() - 7*24*60*60*1000).toISOString().slice(0,10).replace(/-/g,''),
+                EndDate: new Date().toISOString().slice(0,10).replace(/-/g,''),
+                OffSetValue: '0'
+            },
+            { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+        // Find the specific receipt
+        const transactions = pullRes.data?.Response?.Transactions || pullRes.data?.transactions || pullRes.data;
+        const match = Array.isArray(transactions) 
+            ? transactions.find(t => t.TransID === receipt || t.ReceiptNo === receipt)
+            : null;
+        res.json({ raw: pullRes.data, match, receipt });
+    } catch (err) {
+        res.json({ error: err.response?.data || err.message, status: err.response?.status });
+    }
+});
+
 // POST /mpesa/result - Transaction Status result callback
 app.post('/mpesa/result', async (req, res) => {
     try {
