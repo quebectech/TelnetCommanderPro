@@ -100,28 +100,51 @@ app.post('/verify-payment', async (req, res) => {
 });
 
 // POST /mpesa/validate
-app.post('/mpesa/validate', (req, res) => res.json({ ResultCode: 0, ResultDesc: 'Accepted' }));
+app.post('/mpesa/validate', async (req, res) => {
+    const token = (req.body.BillRefNumber || '').toUpperCase().trim();
+    if (!token.startsWith('TCP-')) {
+        // Forward validation to amorwifi
+        try {
+            const fwd = await axios.post('https://amorwifi.co.ke/subscription/payment/confirmation/', req.body, { timeout: 5000 });
+            return res.json(fwd.data);
+        } catch { }
+    }
+    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
+});
 
-// POST /mpesa/confirm - Safaricom C2B callback
+// POST /mpesa/confirm - Safaricom C2B callback - routes TCP payments here, forwards others to amorwifi
 app.post('/mpesa/confirm', async (req, res) => {
+    const AMORWIFI_URL = 'https://amorwifi.co.ke/subscription/payment/confirmation/';
     try {
         const { BillRefNumber, TransAmount, MpesaReceiptNumber, MSISDN } = req.body;
         const token = (BillRefNumber || '').toUpperCase().trim();
         const amount = parseFloat(TransAmount) || 0;
         console.log(`C2B confirm: token=${token}, amount=${amount}, ref=${MpesaReceiptNumber}`);
 
-        const tokens = await getTokens();
-        const entry = tokens.find(t => t.token === token);
-        if (entry) {
-            entry.paid = true;
-            entry.amount = amount;
-            entry.mpesaRef = MpesaReceiptNumber;
-            entry.phone = MSISDN;
-            await saveTokens(tokens);
-            console.log(`Token ${token} marked paid: KES ${amount}`);
+        if (token.startsWith('TCP-')) {
+            // Handle TelnetCommanderPro payment
+            const tokens = await getTokens();
+            const entry = tokens.find(t => t.token === token);
+            if (entry) {
+                entry.paid = true;
+                entry.amount = amount;
+                entry.mpesaRef = MpesaReceiptNumber;
+                entry.phone = MSISDN;
+                await saveTokens(tokens);
+                console.log(`Token ${token} marked paid: KES ${amount}`);
+            } else {
+                console.log(`Unknown TCP token: ${token}`);
+            }
         } else {
-            console.log(`Unknown token: ${token}`);
+            // Forward to amorwifi system
+            try {
+                await axios.post(AMORWIFI_URL, req.body, { timeout: 10000 });
+                console.log(`Forwarded non-TCP payment to amorwifi: ${token}`);
+            } catch (fwdErr) {
+                console.error(`Forward to amorwifi failed: ${fwdErr.message}`);
+            }
         }
+
         res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     } catch (err) {
         console.error('Confirm error:', err.message);
