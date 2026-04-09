@@ -39,6 +39,107 @@ function generateToken() {
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running v2.0.3' }));
 
+// Admin panel - simple HTML page to credit payments
+app.get('/admin', (req, res) => {
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+<title>TCP Admin - Credit Payments</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: Arial, sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; background: #f5f5f5; }
+  h2 { color: #0078D4; }
+  input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #ccc; font-size: 15px; box-sizing: border-box; }
+  button { background: #0078D4; color: white; border: none; cursor: pointer; font-weight: bold; }
+  button:hover { background: #005a9e; }
+  #result { margin-top: 16px; padding: 12px; border-radius: 6px; display: none; }
+  .success { background: #d4edda; color: #155724; }
+  .error { background: #f8d7da; color: #721c24; }
+  .pending { background: #fff3cd; color: #856404; margin-top: 10px; padding: 10px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<h2>💰 TCP Admin - Credit Payment</h2>
+<p>When a customer sends M-Pesa with a TCP token, enter the details below to credit their wallet.</p>
+<label>Admin Key</label>
+<input type="password" id="adminKey" placeholder="Admin key"/>
+<label>Token (from M-Pesa SMS e.g. TCP-82234F)</label>
+<input type="text" id="token" placeholder="TCP-XXXXXX" style="text-transform:uppercase"/>
+<label>Amount (KES)</label>
+<input type="number" id="amount" placeholder="100" value="100"/>
+<label>Hardware ID (from customer)</label>
+<input type="text" id="hwid" placeholder="Customer hardware ID"/>
+<button onclick="credit()">✅ Credit Wallet</button>
+<div id="result"></div>
+
+<hr style="margin:30px 0"/>
+<h3>📋 Pending Tokens</h3>
+<button onclick="loadTokens()" style="background:#6c757d">Refresh Pending Tokens</button>
+<div id="tokens"></div>
+
+<script>
+async function credit() {
+  const res = document.getElementById('result');
+  res.style.display = 'none';
+  try {
+    const r = await fetch('/admin/credit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        token: document.getElementById('token').value.toUpperCase(),
+        amount: parseFloat(document.getElementById('amount').value),
+        hardwareId: document.getElementById('hwid').value,
+        adminKey: document.getElementById('adminKey').value
+      })
+    });
+    const data = await r.json();
+    res.style.display = 'block';
+    if (data.success) {
+      res.className = 'success';
+      res.innerHTML = '✅ ' + data.message;
+    } else {
+      res.className = 'error';
+      res.innerHTML = '❌ ' + (data.error || 'Failed');
+    }
+  } catch(e) {
+    res.style.display = 'block';
+    res.className = 'error';
+    res.innerHTML = '❌ ' + e.message;
+  }
+}
+
+async function loadTokens() {
+  const div = document.getElementById('tokens');
+  div.innerHTML = 'Loading...';
+  try {
+    const r = await fetch('/admin/tokens?adminKey=' + document.getElementById('adminKey').value);
+    const data = await r.json();
+    if (!data.tokens || data.tokens.length === 0) {
+      div.innerHTML = '<p>No pending tokens.</p>';
+      return;
+    }
+    div.innerHTML = data.tokens.map(t => 
+      '<div class="pending"><b>' + t.token + '</b> | ' + t.hardwareId.substring(0,8) + '... | ' +
+      (t.paid ? '✅ PAID KES ' + t.amount : '⏳ Waiting') + 
+      ' | ' + new Date(t.createdAt).toLocaleTimeString() + '</div>'
+    ).join('');
+  } catch(e) { div.innerHTML = 'Error: ' + e.message; }
+}
+</script>
+</body>
+</html>`);
+});
+
+// GET /admin/tokens - list pending tokens
+app.get('/admin/tokens', async (req, res) => {
+    if (req.query.adminKey !== 'TCP-ADMIN-2026') return res.status(403).json({ error: 'Unauthorized' });
+    try {
+        const tokens = await getTokens();
+        const cutoff = Date.now() - 30 * 60 * 1000;
+        res.json({ tokens: tokens.filter(t => t.createdAt > cutoff) });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // GET wallet balance
 app.get('/wallet/:hardwareId', async (req, res) => {
     try {
@@ -78,7 +179,7 @@ app.post('/verify-payment', async (req, res) => {
         const entry = tokens.find(t => t.token === token.toUpperCase() && t.hardwareId === hardwareId);
 
         if (!entry) return res.status(404).json({ error: 'Token not found or expired. Please generate a new token.' });
-        if (!entry.paid) return res.status(402).json({ error: 'Payment not yet received. Please send M-Pesa first then try again.' });
+        if (!entry.paid) return res.status(402).json({ error: 'Payment not yet confirmed. If you have already paid, please wait a moment and try again. Contact support if this persists.' });
 
         // Credit wallet
         const wallets = await getWallets();
