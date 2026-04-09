@@ -62,6 +62,23 @@ namespace TelnetCommanderPro
             }
         }
 
+        public static async Task<ReceiptResult> SubmitReceiptAsync(string token, string receiptNumber, string hardwareId)
+        {
+            try
+            {
+                var payload = JsonConvert.SerializeObject(new { token, receiptNumber, hardwareId });
+                var content = new StringContent(payload, Encoding.UTF8, "application/json");
+                var res = await _client.PostAsync($"{BackendUrl}/verify-receipt", content);
+                var body = await res.Content.ReadAsStringAsync();
+                var data = JsonConvert.DeserializeObject<ReceiptResult>(body);
+                return data ?? new ReceiptResult { Pending = false };
+            }
+            catch (Exception ex)
+            {
+                return new ReceiptResult { Pending = false, Error = ex.Message };
+            }
+        }
+
         public static async Task<VerifyPaymentResult> VerifyPaymentAsync(string token, string hardwareId)
         {
             try
@@ -120,6 +137,14 @@ namespace TelnetCommanderPro
         [JsonProperty("instructions")] public string? Instructions { get; set; }
         [JsonProperty("error")] public string? Error { get; set; }
         public bool Success => Token != null && Error == null;
+    }
+
+    public class ReceiptResult
+    {
+        [JsonProperty("success")] public bool Success { get; set; }
+        [JsonProperty("pending")] public bool Pending { get; set; }
+        [JsonProperty("message")] public string? Message { get; set; }
+        [JsonProperty("error")] public string? Error { get; set; }
     }
 
     public class VerifyPaymentResult

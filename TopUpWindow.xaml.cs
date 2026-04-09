@@ -24,14 +24,30 @@ namespace TelnetCommanderPro
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+        private void ReceiptInput_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        {
+            if (ReceiptInput == null) return;
+            string current = ReceiptInput.Text;
+            // Replace letter O with zero, force uppercase
+            string fixed_ = current.ToUpper().Replace("O", "0");
+            if (fixed_ != current)
+            {
+                int caret = ReceiptInput.CaretIndex;
+                ReceiptInput.Text = fixed_;
+                ReceiptInput.CaretIndex = Math.Min(caret, fixed_.Length);
+            }
+        }
+
         private void WhatsApp_Click(object sender, RoutedEventArgs e)
         {
             if (_currentToken == null) return;
+            string receipt = ReceiptInput?.Text?.Trim() ?? "";
             string waMsg = Uri.EscapeDataString(
                 $"TCP Top-Up Request\n" +
                 $"Token: {_currentToken}\n" +
                 $"Amount: KES {_requestedAmount:F0}\n" +
-                $"Hardware ID: {_hardwareId}");
+                $"Hardware ID: {_hardwareId}" +
+                (string.IsNullOrEmpty(receipt) ? "" : $"\nM-Pesa Receipt: {receipt}"));
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = $"https://wa.me/254741876354?text={waMsg}",
@@ -49,9 +65,9 @@ namespace TelnetCommanderPro
 
         private async Task GenerateToken()
         {
-            if (!decimal.TryParse(AmountInput.Text.Trim(), out decimal amount) || amount < 100)
+            if (!decimal.TryParse(AmountInput.Text.Trim(), out decimal amount) || amount < 1)
             {
-                ShowStatus("Minimum amount is KES 100.", "#DC3545");
+                ShowStatus("Please enter a valid amount.", "#DC3545");
                 return;
             }
             _requestedAmount = amount;
@@ -100,6 +116,19 @@ namespace TelnetCommanderPro
             if (_currentToken == null) return;
 
             SetBusy(true, "⏳ Verifying payment...");
+
+            // If user entered a receipt number, submit it for faster verification
+            string receipt = ReceiptInput?.Text?.Trim() ?? "";
+            if (!string.IsNullOrEmpty(receipt))
+            {
+                var receiptResult = await WalletManager.SubmitReceiptAsync(_currentToken, receipt, _hardwareId);
+                if (receiptResult.Pending)
+                {
+                    SetBusy(false);
+                    ShowStatus("✅ Receipt submitted! Admin will verify and credit your wallet shortly. Click Verify again in a few minutes.", "#0078D4");
+                    return;
+                }
+            }
 
             var result = await WalletManager.VerifyPaymentAsync(_currentToken, _hardwareId);
 

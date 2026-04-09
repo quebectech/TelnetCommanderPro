@@ -90,7 +90,7 @@
                         <TextBox x:Name="AmountInput" Text="100" Height="40" Padding="12,0"
                                  FontSize="13" BorderThickness="0" VerticalContentAlignment="Center" Background="White"/>
                     </Border>
-                    <TextBlock Text="Minimum: KES 100" FontSize="11" Foreground="#6C757D" Margin="0,0,0,0"/>
+                    <TextBlock Text="Any amount (testing mode)" FontSize="11" Foreground="#E67E22" Margin="0,0,0,0"/>
                 </StackPanel>
 
                 <!-- Step 2: Payment instructions (hidden until token generated) -->
@@ -121,10 +121,20 @@
 
                     <TextBlock Text="Token expires in 30 minutes." FontSize="11" Foreground="#6C757D" HorizontalAlignment="Center"/>
 
+                    <!-- Receipt input -->
+                    <TextBlock Text="M-Pesa Receipt Number (optional)" FontSize="12" FontWeight="SemiBold" Foreground="#1F2937" Margin="0,12,0,4"/>
+                    <Border BorderBrush="#CED4DA" BorderThickness="1" CornerRadius="6">
+                        <TextBox x:Name="ReceiptInput" Height="38" Padding="10,0" FontSize="13"
+                                 BorderThickness="0" VerticalContentAlignment="Center" Background="White"
+                                 CharacterCasing="Upper"
+                                 TextChanged="ReceiptInput_TextChanged"/>
+                    </Border>
+                    <TextBlock Text="Letters only - O is automatically converted to 0." FontSize="11" Foreground="#6C757D" Margin="0,2,0,8"/>
+
                     <!-- WhatsApp button -->
                     <Button x:Name="WhatsAppButton" Content="📱 Send via WhatsApp to Admin" Height="36"
                             Click="WhatsApp_Click" Cursor="Hand" FontSize="12" FontWeight="SemiBold"
-                            Foreground="White" BorderThickness="0" Margin="0,10,0,0" Background="#25D366">
+                            Foreground="White" BorderThickness="0" Background="#25D366">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Template">
