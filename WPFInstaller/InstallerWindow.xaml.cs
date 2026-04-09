@@ -21,7 +21,11 @@ namespace TelnetCommanderProInstaller
         public InstallerWindow()
         {
             InitializeComponent();
-            if (!CheckDotNetRuntime()) return; // abort if .NET missing
+            if (!CheckDotNetRuntime()) return;
+            // Set version label from assembly
+            var ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            if (InstallerVersionText != null && ver != null)
+                InstallerVersionText.Text = $"Version {ver.Major}.{ver.Minor}.{ver.Build}";
             CheckExistingInstallation();
         }
 

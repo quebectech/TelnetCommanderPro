@@ -36,6 +36,15 @@ function generateToken() {
     return 'TCP-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 }
 
+async function getMpesaToken() {
+    const auth = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString('base64');
+    const res = await axios.get(
+        'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
+        { headers: { Authorization: `Basic ${auth}` } }
+    );
+    return res.data.access_token;
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running v2.0.3' }));
 
@@ -178,11 +187,43 @@ app.post('/verify-receipt', async (req, res) => {
         if (!entry) return res.status(404).json({ error: 'Token not found or expired.' });
         if (entry.paid) return res.json({ success: true, alreadyCredited: true });
 
-        // Store receipt for admin to verify, mark as pending
+        // Try Daraja Transaction Status to auto-verify
+        let verified = false;
+        let verifiedAmount = 0;
+        try {
+            const mpesaToken = await getMpesaToken();
+            const tsRes = await axios.post(
+                'https://api.safaricom.co.ke/mpesa/transactionstatus/v1/query',
+                {
+                    Initiator: 'testapi',
+                    SecurityCredential: process.env.SECURITY_CREDENTIAL || '',
+                    CommandID: 'TransactionStatusQuery',
+                    TransactionID: receiptNumber.toUpperCase(),
+                    PartyA: SHORTCODE,
+                    IdentifierType: '4',
+                    ResultURL: `${BASE_URL}/mpesa/result`,
+                    QueueTimeOutURL: `${BASE_URL}/mpesa/timeout`,
+                    Remarks: 'TCP verify',
+                    Occasion: ''
+                },
+                { headers: { Authorization: `Bearer ${mpesaToken}` } }
+            );
+            console.log('Transaction status:', JSON.stringify(tsRes.data));
+            // If ResponseCode is 0, request accepted - result comes via callback
+            // For now mark as pending with receipt
+            if (tsRes.data?.ResponseCode === '0') {
+                entry.pendingReceipt = receiptNumber.toUpperCase();
+                await saveTokens(tokens);
+                return res.json({ success: true, pending: true, message: 'Verification in progress. Click Verify again in 30 seconds.' });
+            }
+        } catch (darajaErr) {
+            console.log('Daraja verify failed, using manual flow:', darajaErr.response?.data?.errorMessage || darajaErr.message);
+        }
+
+        // Fallback: store receipt for admin to verify manually
         entry.pendingReceipt = receiptNumber.toUpperCase();
         await saveTokens(tokens);
-
-        console.log(`Receipt ${receiptNumber} submitted for token ${token} by ${hardwareId.substring(0,8)}`);
+        console.log(`Receipt ${receiptNumber} submitted for token ${token}`);
         res.json({ success: true, pending: true, message: 'Receipt submitted. Admin will verify and credit your wallet shortly.' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -219,6 +260,40 @@ app.post('/verify-payment', async (req, res) => {
         res.json({ success: true, newBalance: wallet.balanceKes, amount: entry.amount });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// POST /mpesa/result - Transaction Status result callback
+app.post('/mpesa/result', async (req, res) => {
+    try {
+        const result = req.body?.Result;
+        if (!result) return res.json({ ResultCode: 0, ResultDesc: 'OK' });
+
+        const receiptNumber = result.TransactionID;
+        const resultCode = result.ResultCode;
+        console.log(`Transaction status result: ${receiptNumber}, code: ${resultCode}`);
+
+        if (resultCode === 0) {
+            // Find token with this pending receipt and mark as paid
+            const params = result.ResultParameters?.ResultParameter || [];
+            const amount = params.find(p => p.Key === 'Amount')?.Value || 0;
+            const tokens = await getTokens();
+            const entry = tokens.find(t => t.pendingReceipt === receiptNumber?.toUpperCase());
+            if (entry) {
+                entry.paid = true;
+                entry.amount = parseFloat(amount);
+                entry.mpesaRef = receiptNumber;
+                await saveTokens(tokens);
+                console.log(`Auto-credited token ${entry.token}: KES ${amount}`);
+            }
+        }
+        res.json({ ResultCode: 0, ResultDesc: 'OK' });
+    } catch (err) {
+        console.error('Result callback error:', err.message);
+        res.json({ ResultCode: 0, ResultDesc: 'OK' });
+    }
+});
+
+// POST /mpesa/timeout
+app.post('/mpesa/timeout', (req, res) => res.json({ ResultCode: 0, ResultDesc: 'OK' }));
 
 // POST /mpesa/validate
 app.post('/mpesa/validate', async (req, res) => {
