@@ -9,63 +9,35 @@ const CONSUMER_KEY    = process.env.CONSUMER_KEY;
 const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
 const SHORTCODE       = process.env.SHORTCODE || '4167789';
 const JSONBIN_API_KEY = process.env.JSONBIN_API_KEY;
-const WALLET_BIN_ID   = process.env.WALLET_BIN_ID || '69d61f3736566621a88dd80e';
+const WALLET_BIN_ID   = process.env.WALLET_BIN_ID   || '69d61f3736566621a88dd80e';
+const TOKENS_BIN_ID   = process.env.TOKENS_BIN_ID   || '69d667edaaba882197d84570';
 const JSONBIN_URL     = 'https://api.jsonbin.io/v3/b';
-const BASE_URL        = process.env.CALLBACK_URL?.replace('/mpesa/callback', '') || 'https://telnetcommanderpro.onrender.com';
+const BASE_URL        = process.env.CALLBACK_URL?.replace('/mpesa/callback','') || 'https://telnetcommanderpro.onrender.com';
 
-// ── In-memory pending tokens: token → { hardwareId, amount, createdAt } ─────
-const pendingTokens = {};
+// ── JSONBin helpers ──────────────────────────────────────────────────────────
+const jbHeaders = { 'X-Master-Key': JSONBIN_API_KEY, 'Content-Type': 'application/json' };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+async function getTokens() {
+    const res = await axios.get(`${JSONBIN_URL}/${TOKENS_BIN_ID}/latest`, { headers: jbHeaders });
+    return res.data.record.tokens || [];
+}
+async function saveTokens(tokens) {
+    await axios.put(`${JSONBIN_URL}/${TOKENS_BIN_ID}`, { tokens }, { headers: jbHeaders });
+}
+async function getWallets() {
+    const res = await axios.get(`${JSONBIN_URL}/${WALLET_BIN_ID}/latest`, { headers: jbHeaders });
+    return res.data.record.wallets || [];
+}
+async function saveWallets(wallets) {
+    await axios.put(`${JSONBIN_URL}/${WALLET_BIN_ID}`, { wallets }, { headers: jbHeaders });
+}
+
 function generateToken() {
     return 'TCP-' + crypto.randomBytes(3).toString('hex').toUpperCase();
 }
 
-async function getWallets() {
-    const res = await axios.get(`${JSONBIN_URL}/${WALLET_BIN_ID}/latest`, {
-        headers: { 'X-Master-Key': JSONBIN_API_KEY }
-    });
-    return res.data.record.wallets || [];
-}
-
-async function saveWallets(wallets) {
-    await axios.put(`${JSONBIN_URL}/${WALLET_BIN_ID}`, { wallets }, {
-        headers: { 'X-Master-Key': JSONBIN_API_KEY, 'Content-Type': 'application/json' }
-    });
-}
-
-async function getMpesaToken() {
-    const auth = Buffer.from(`${CONSUMER_KEY}:${CONSUMER_SECRET}`).toString('base64');
-    const res = await axios.get(
-        'https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials',
-        { headers: { Authorization: `Basic ${auth}` } }
-    );
-    return res.data.access_token;
-}
-
-// Register C2B callback URL with Safaricom (call once on startup)
-async function registerC2BUrl() {
-    try {
-        const token = await getMpesaToken();
-        await axios.post(
-            'https://api.safaricom.co.ke/mpesa/c2b/v2/registerurl',
-            {
-                ShortCode: SHORTCODE,
-                ResponseType: 'Completed',
-                ConfirmationURL: `${BASE_URL}/mpesa/confirm`,
-                ValidationURL: `${BASE_URL}/mpesa/validate`
-            },
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        console.log('C2B URLs registered successfully');
-    } catch (err) {
-        console.log('C2B URL registration skipped (may already be registered):', err.response?.data?.errorMessage || err.message);
-    }
-}
-
 // ── Routes ───────────────────────────────────────────────────────────────────
-
-app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running' }));
+app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running v2.0.3' }));
 
 // GET wallet balance
 app.get('/wallet/:hardwareId', async (req, res) => {
@@ -73,124 +45,83 @@ app.get('/wallet/:hardwareId', async (req, res) => {
         const wallets = await getWallets();
         const wallet = wallets.find(w => w.hardwareId === req.params.hardwareId);
         res.json(wallet || { hardwareId: req.params.hardwareId, balanceKes: 0, transactions: [] });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /generate-token - generate a payment token for manual M-Pesa payment
+// POST /generate-token
 app.post('/generate-token', async (req, res) => {
     const { hardwareId } = req.body;
     if (!hardwareId) return res.status(400).json({ error: 'hardwareId required' });
 
-    const token = generateToken();
-    pendingTokens[token] = {
-        hardwareId,
-        createdAt: Date.now()
-    };
+    try {
+        const token = generateToken();
+        const tokens = await getTokens();
 
-    // Clean up tokens older than 30 minutes
-    const cutoff = Date.now() - 30 * 60 * 1000;
-    Object.keys(pendingTokens).forEach(k => {
-        if (pendingTokens[k].createdAt < cutoff) delete pendingTokens[k];
-    });
+        // Remove expired tokens (older than 30 min) and old tokens for this device
+        const cutoff = Date.now() - 30 * 60 * 1000;
+        const fresh = tokens.filter(t => t.createdAt > cutoff && t.hardwareId !== hardwareId);
 
-    res.json({
-        token,
-        paybill: SHORTCODE,
-        instructions: `Send M-Pesa to Paybill ${SHORTCODE}, Account: ${token}`
-    });
+        fresh.push({ token, hardwareId, createdAt: Date.now(), paid: false, amount: 0, mpesaRef: '' });
+        await saveTokens(fresh);
+
+        res.json({ token, paybill: SHORTCODE, instructions: `Send M-Pesa to Paybill ${SHORTCODE}, Account: ${token}` });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /verify-payment - user clicks "I've Paid", check if C2B callback was received
+// POST /verify-payment
 app.post('/verify-payment', async (req, res) => {
     const { token, hardwareId } = req.body;
     if (!token || !hardwareId) return res.status(400).json({ error: 'token and hardwareId required' });
 
-    const pending = pendingTokens[token];
-    if (!pending) return res.status(404).json({ error: 'Token not found or expired. Please generate a new token.' });
-    if (pending.hardwareId !== hardwareId) return res.status(403).json({ error: 'Token does not match this device.' });
-
-    // Check if payment was received (set by C2B callback)
-    if (!pending.paid) {
-        return res.status(402).json({ error: 'Payment not yet received. Please send M-Pesa first then try again.' });
-    }
-
-    // Payment confirmed - credit wallet
     try {
+        const tokens = await getTokens();
+        const entry = tokens.find(t => t.token === token.toUpperCase() && t.hardwareId === hardwareId);
+
+        if (!entry) return res.status(404).json({ error: 'Token not found or expired. Please generate a new token.' });
+        if (!entry.paid) return res.status(402).json({ error: 'Payment not yet received. Please send M-Pesa first then try again.' });
+
+        // Credit wallet
         const wallets = await getWallets();
         let wallet = wallets.find(w => w.hardwareId === hardwareId);
-        if (!wallet) {
-            wallet = { hardwareId, balanceKes: 0, transactions: [] };
-            wallets.push(wallet);
-        }
+        if (!wallet) { wallet = { hardwareId, balanceKes: 0, transactions: [] }; wallets.push(wallet); }
 
-        wallet.balanceKes = (wallet.balanceKes || 0) + pending.amount;
+        wallet.balanceKes = (wallet.balanceKes || 0) + entry.amount;
         wallet.lastTopUp = new Date().toISOString();
         wallet.transactions = wallet.transactions || [];
-        wallet.transactions.push({
-            type: 'topup',
-            amount: pending.amount,
-            mpesaRef: pending.mpesaRef || '',
-            token,
-            date: new Date().toISOString()
-        });
+        wallet.transactions.push({ type: 'topup', amount: entry.amount, mpesaRef: entry.mpesaRef, token, date: new Date().toISOString() });
 
         await saveWallets(wallets);
-        delete pendingTokens[token];
 
-        res.json({ success: true, newBalance: wallet.balanceKes, amount: pending.amount });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+        // Remove used token
+        await saveTokens(tokens.filter(t => t.token !== token.toUpperCase()));
+
+        res.json({ success: true, newBalance: wallet.balanceKes, amount: entry.amount });
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /admin/credit - manually credit a token (for when C2B callback isn't set up)
-app.post('/admin/credit', async (req, res) => {
-    const { token, amount, adminKey } = req.body;
-    
-    // Simple admin protection
-    if (adminKey !== 'TCP-ADMIN-2026') {
-        return res.status(403).json({ error: 'Unauthorized' });
-    }
-    
-    if (!token || !amount) return res.status(400).json({ error: 'token and amount required' });
-    
-    const pending = pendingTokens[token.toUpperCase()];
-    if (!pending) return res.status(404).json({ error: 'Token not found or expired' });
-    
-    pending.paid = true;
-    pending.amount = parseFloat(amount);
-    pending.mpesaRef = 'MANUAL-CREDIT';
-    
-    console.log(`Manual credit: token=${token}, amount=${amount}`);
-    res.json({ success: true, message: `Token ${token} credited with KES ${amount}` });
-});
+// POST /mpesa/validate
+app.post('/mpesa/validate', (req, res) => res.json({ ResultCode: 0, ResultDesc: 'Accepted' }));
 
-// POST /mpesa/validate - Safaricom calls this before confirming C2B payment
-app.post('/mpesa/validate', (req, res) => {
-    res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
-});
-
-// POST /mpesa/confirm - Safaricom calls this after C2B payment is confirmed
-app.post('/mpesa/confirm', (req, res) => {
+// POST /mpesa/confirm - Safaricom C2B callback
+app.post('/mpesa/confirm', async (req, res) => {
     try {
         const { BillRefNumber, TransAmount, MpesaReceiptNumber, MSISDN } = req.body;
         const token = (BillRefNumber || '').toUpperCase().trim();
         const amount = parseFloat(TransAmount) || 0;
+        console.log(`C2B confirm: token=${token}, amount=${amount}, ref=${MpesaReceiptNumber}`);
 
-        console.log(`C2B payment received: token=${token}, amount=${amount}, ref=${MpesaReceiptNumber}`);
-
-        if (pendingTokens[token]) {
-            pendingTokens[token].paid = true;
-            pendingTokens[token].amount = amount;
-            pendingTokens[token].mpesaRef = MpesaReceiptNumber;
-            pendingTokens[token].phone = MSISDN;
-            console.log(`Token ${token} marked as paid: KES ${amount}`);
+        const tokens = await getTokens();
+        const entry = tokens.find(t => t.token === token);
+        if (entry) {
+            entry.paid = true;
+            entry.amount = amount;
+            entry.mpesaRef = MpesaReceiptNumber;
+            entry.phone = MSISDN;
+            await saveTokens(tokens);
+            console.log(`Token ${token} marked paid: KES ${amount}`);
         } else {
-            console.log(`Unknown token received: ${token}`);
+            console.log(`Unknown token: ${token}`);
         }
-
         res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
     } catch (err) {
         console.error('Confirm error:', err.message);
@@ -198,36 +129,50 @@ app.post('/mpesa/confirm', (req, res) => {
     }
 });
 
-// POST /deduct - deduct from wallet after operation
+// POST /admin/credit - manually credit a token
+app.post('/admin/credit', async (req, res) => {
+    const { token, amount, hardwareId, adminKey } = req.body;
+    if (adminKey !== 'TCP-ADMIN-2026') return res.status(403).json({ error: 'Unauthorized' });
+    if (!token || !amount || !hardwareId) return res.status(400).json({ error: 'token, amount and hardwareId required' });
+
+    try {
+        const tokens = await getTokens();
+        let entry = tokens.find(t => t.token === token.toUpperCase());
+
+        if (!entry) {
+            // Create entry if not found (for payments made before token was saved)
+            entry = { token: token.toUpperCase(), hardwareId, createdAt: Date.now(), paid: false, amount: 0, mpesaRef: 'ADMIN' };
+            tokens.push(entry);
+        }
+
+        entry.paid = true;
+        entry.amount = parseFloat(amount);
+        entry.mpesaRef = 'ADMIN-CREDIT';
+        entry.hardwareId = hardwareId;
+        await saveTokens(tokens);
+
+        res.json({ success: true, message: `Token ${token} credited KES ${amount} for ${hardwareId}` });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /deduct
 app.post('/deduct', async (req, res) => {
     const { hardwareId, routerType } = req.body;
     if (!hardwareId || !routerType) return res.status(400).json({ error: 'hardwareId and routerType required' });
-
     const cost = routerType === 'X6' ? 150 : 100;
-
     try {
         const wallets = await getWallets();
         const wallet = wallets.find(w => w.hardwareId === hardwareId);
-
         if (!wallet || wallet.balanceKes < cost) {
             return res.status(402).json({ error: 'Insufficient balance', required: cost, balance: wallet?.balanceKes || 0 });
         }
-
         wallet.balanceKes -= cost;
         wallet.transactions = wallet.transactions || [];
         wallet.transactions.push({ type: 'deduct', amount: cost, router: routerType, date: new Date().toISOString() });
-
         await saveWallets(wallets);
         res.json({ success: true, newBalance: wallet.balanceKes });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    // Try to register C2B URLs on startup
-    registerC2BUrl();
-});
-
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
