@@ -174,6 +174,142 @@ app.post('/generate-token', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// POST /verify-transaction - verify by transaction code + amount (no Daraja needed)
+app.post('/verify-transaction', async (req, res) => {
+    const { transactionCode, amount, token, hardwareId } = req.body;
+    if (!transactionCode || !amount || !token || !hardwareId) {
+        return res.status(400).json({ error: 'transactionCode, amount, token and hardwareId required' });
+    }
+
+    // Validate transaction code format: 10 alphanumeric uppercase chars
+    const code = transactionCode.toUpperCase().replace(/O/g, '0').trim();
+    if (!/^[A-Z0-9]{8,12}$/.test(code)) {
+        return res.status(400).json({ error: 'Invalid transaction code format. Should be like UD9QB03GS7' });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount < 1) {
+        return res.status(400).json({ error: 'Invalid amount' });
+    }
+
+    try {
+        const tokens = await getTokens();
+        const entry = tokens.find(t => t.token === token.toUpperCase() && t.hardwareId === hardwareId);
+        if (!entry) return res.status(404).json({ error: 'Token not found or expired. Generate a new token.' });
+        if (entry.paid) return res.json({ success: true, alreadyCredited: true });
+
+        // Check this transaction code hasn't been used before (anti-fraud)
+        const wallets = await getWallets();
+        const alreadyUsed = wallets.some(w => 
+            w.transactions?.some(t => t.mpesaRef === code)
+        );
+        if (alreadyUsed) {
+            return res.status(400).json({ error: 'This transaction code has already been used.' });
+        }
+
+        // Credit the wallet
+        entry.paid = true;
+        entry.amount = parsedAmount;
+        entry.mpesaRef = code;
+        await saveTokens(tokens);
+
+        let wallet = wallets.find(w => w.hardwareId === hardwareId);
+        if (!wallet) { wallet = { hardwareId, balanceKes: 0, transactions: [] }; wallets.push(wallet); }
+
+        wallet.balanceKes = (wallet.balanceKes || 0) + parsedAmount;
+        wallet.lastTopUp = new Date().toISOString();
+        wallet.transactions = wallet.transactions || [];
+        wallet.transactions.push({ type: 'topup', amount: parsedAmount, mpesaRef: code, token, date: new Date().toISOString() });
+        await saveWallets(wallets);
+
+        await saveTokens(tokens.filter(t => t.token !== token.toUpperCase()));
+
+        console.log(`Transaction verified: ${code}, KES ${parsedAmount} for ${hardwareId.substring(0,8)}`);
+        res.json({ success: true, newBalance: wallet.balanceKes, amount: parsedAmount, receipt: code });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /verify-sms - parse M-Pesa SMS and auto-credit if token matches
+app.post('/verify-sms', async (req, res) => {
+    const { smsText, token, hardwareId } = req.body;
+    if (!smsText || !token || !hardwareId) {
+        return res.status(400).json({ error: 'smsText, token and hardwareId required' });
+    }
+
+    try {
+        const tokens = await getTokens();
+        const entry = tokens.find(t => t.token === token.toUpperCase() && t.hardwareId === hardwareId);
+        if (!entry) return res.status(404).json({ error: 'Token not found or expired. Generate a new token.' });
+        if (entry.paid) {
+            return res.json({ success: true, alreadyCredited: true, message: 'Already credited' });
+        }
+
+        // Parse M-Pesa SMS
+        // Format: "ABC123XYZ Confirmed. KshXXX.XX sent to BUSINESS NAME for account TCP-XXXXXX on DD/MM/YY..."
+        const sms = smsText.trim();
+
+        // Extract receipt number (first word, alphanumeric)
+        const receiptMatch = sms.match(/^([A-Z0-9]{8,12})\s+Confirmed/i);
+        if (!receiptMatch) {
+            return res.status(400).json({ error: 'Invalid M-Pesa SMS format. Please paste the full confirmation message.' });
+        }
+        const receipt = receiptMatch[1].toUpperCase();
+
+        // Extract amount
+        const amountMatch = sms.match(/Ksh\s*([\d,]+\.?\d*)/i);
+        if (!amountMatch) {
+            return res.status(400).json({ error: 'Could not read amount from SMS.' });
+        }
+        const amount = parseFloat(amountMatch[1].replace(',', ''));
+
+        // Extract account reference - must contain our token
+        const accountMatch = sms.match(/for account\s+([A-Z0-9\-]+)/i);
+        const accountRef = accountMatch ? accountMatch[1].toUpperCase() : '';
+
+        console.log(`SMS parse: receipt=${receipt}, amount=${amount}, account=${accountRef}, token=${token}`);
+
+        // Verify the account reference matches the token
+        if (!accountRef.includes(token.toUpperCase())) {
+            return res.status(400).json({ 
+                error: `SMS account reference "${accountRef}" does not match token "${token}". Make sure you used the correct account number when paying.` 
+            });
+        }
+
+        // Verify payment was to our shortcode
+        if (!sms.toLowerCase().includes('amortech') && !sms.includes(SHORTCODE)) {
+            return res.status(400).json({ error: 'SMS does not appear to be a payment to the correct Paybill.' });
+        }
+
+        // All checks passed - credit the wallet
+        entry.paid = true;
+        entry.amount = amount;
+        entry.mpesaRef = receipt;
+        await saveTokens(tokens);
+
+        // Credit wallet
+        const wallets = await getWallets();
+        let wallet = wallets.find(w => w.hardwareId === hardwareId);
+        if (!wallet) { wallet = { hardwareId, balanceKes: 0, transactions: [] }; wallets.push(wallet); }
+
+        wallet.balanceKes = (wallet.balanceKes || 0) + amount;
+        wallet.lastTopUp = new Date().toISOString();
+        wallet.transactions = wallet.transactions || [];
+        wallet.transactions.push({ type: 'topup', amount, mpesaRef: receipt, token, date: new Date().toISOString() });
+        await saveWallets(wallets);
+
+        // Remove used token
+        await saveTokens(tokens.filter(t => t.token !== token.toUpperCase()));
+
+        console.log(`SMS verified and credited: ${receipt}, KES ${amount} for ${hardwareId.substring(0,8)}`);
+        res.json({ success: true, newBalance: wallet.balanceKes, amount, receipt });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST /verify-receipt - user provides M-Pesa receipt number to auto-verify payment
 app.post('/verify-receipt', async (req, res) => {
     const { receiptNumber, token, hardwareId } = req.body;
