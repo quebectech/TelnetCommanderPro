@@ -24,6 +24,21 @@ namespace TelnetCommanderPro
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
         private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+        private void WhatsApp_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentToken == null) return;
+            string waMsg = Uri.EscapeDataString(
+                $"TCP Top-Up Request\n" +
+                $"Token: {_currentToken}\n" +
+                $"Amount: KES {_requestedAmount:F0}\n" +
+                $"Hardware ID: {_hardwareId}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = $"https://wa.me/254741876354?text={waMsg}",
+                UseShellExecute = true
+            });
+        }
+
         private async void Action_Click(object sender, RoutedEventArgs e)
         {
             if (!_inPaymentStep)
@@ -65,7 +80,19 @@ namespace TelnetCommanderPro
             ActionButton.Content = "✅ I've Paid - Verify";
             _inPaymentStep = true;
 
-            ShowStatus("Send the M-Pesa payment then click Verify.", "#0078D4");
+            // Open WhatsApp with pre-filled message to admin
+            string waMsg = Uri.EscapeDataString(
+                $"TCP Top-Up Request\n" +
+                $"Token: {result.Token}\n" +
+                $"Amount: KES {amount:F0}\n" +
+                $"Hardware ID: {_hardwareId}");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = $"https://wa.me/254741876354?text={waMsg}",
+                UseShellExecute = true
+            });
+
+            ShowStatus("WhatsApp opened - send the message to admin, then pay M-Pesa and click Verify.", "#0078D4");
         }
 
         private async Task VerifyPayment()

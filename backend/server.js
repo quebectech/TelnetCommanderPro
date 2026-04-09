@@ -39,7 +39,7 @@ function generateToken() {
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running v2.0.3' }));
 
-// Admin panel - simple HTML page to credit payments
+// Admin panel
 app.get('/admin', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html>
@@ -60,14 +60,12 @@ app.get('/admin', (req, res) => {
 </head>
 <body>
 <h2>💰 TCP Admin - Credit Payment</h2>
-<p>When a customer sends M-Pesa with a TCP token, enter the details below to credit their wallet.</p>
-<label>Admin Key</label>
-<input type="password" id="adminKey" placeholder="Admin key"/>
-<label>Token (from M-Pesa SMS e.g. TCP-82234F)</label>
+<p>Enter the details from the customer's WhatsApp message to credit their wallet.</p>
+<label>Token (e.g. TCP-82234F)</label>
 <input type="text" id="token" placeholder="TCP-XXXXXX" style="text-transform:uppercase"/>
 <label>Amount (KES)</label>
 <input type="number" id="amount" placeholder="100" value="100"/>
-<label>Hardware ID (from customer)</label>
+<label>Hardware ID</label>
 <input type="text" id="hwid" placeholder="Customer hardware ID"/>
 <button onclick="credit()">✅ Credit Wallet</button>
 <div id="result"></div>
@@ -88,8 +86,7 @@ async function credit() {
       body: JSON.stringify({
         token: document.getElementById('token').value.toUpperCase(),
         amount: parseFloat(document.getElementById('amount').value),
-        hardwareId: document.getElementById('hwid').value,
-        adminKey: document.getElementById('adminKey').value
+        hardwareId: document.getElementById('hwid').value
       })
     });
     const data = await r.json();
@@ -112,15 +109,15 @@ async function loadTokens() {
   const div = document.getElementById('tokens');
   div.innerHTML = 'Loading...';
   try {
-    const r = await fetch('/admin/tokens?adminKey=' + document.getElementById('adminKey').value);
+    const r = await fetch('/admin/tokens');
     const data = await r.json();
     if (!data.tokens || data.tokens.length === 0) {
       div.innerHTML = '<p>No pending tokens.</p>';
       return;
     }
-    div.innerHTML = data.tokens.map(t => 
-      '<div class="pending"><b>' + t.token + '</b> | ' + t.hardwareId.substring(0,8) + '... | ' +
-      (t.paid ? '✅ PAID KES ' + t.amount : '⏳ Waiting') + 
+    div.innerHTML = data.tokens.map(t =>
+      '<div class="pending"><b>' + t.token + '</b> | ' + t.hardwareId.substring(0,12) + '... | ' +
+      (t.paid ? '✅ PAID KES ' + t.amount : '⏳ Waiting') +
       ' | ' + new Date(t.createdAt).toLocaleTimeString() + '</div>'
     ).join('');
   } catch(e) { div.innerHTML = 'Error: ' + e.message; }
@@ -130,9 +127,8 @@ async function loadTokens() {
 </html>`);
 });
 
-// GET /admin/tokens - list pending tokens
+// GET /admin/tokens
 app.get('/admin/tokens', async (req, res) => {
-    if (req.query.adminKey !== 'TCP-ADMIN-2026') return res.status(403).json({ error: 'Unauthorized' });
     try {
         const tokens = await getTokens();
         const cutoff = Date.now() - 30 * 60 * 1000;
@@ -255,8 +251,7 @@ app.post('/mpesa/confirm', async (req, res) => {
 
 // POST /admin/credit - manually credit a token
 app.post('/admin/credit', async (req, res) => {
-    const { token, amount, hardwareId, adminKey } = req.body;
-    if (adminKey !== 'TCP-ADMIN-2026') return res.status(403).json({ error: 'Unauthorized' });
+    const { token, amount, hardwareId } = req.body;
     if (!token || !amount || !hardwareId) return res.status(400).json({ error: 'token, amount and hardwareId required' });
 
     try {
