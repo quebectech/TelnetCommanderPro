@@ -174,22 +174,17 @@ app.post('/generate-token', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /verify-transaction - verify by transaction code + amount (no Daraja needed)
+// POST /verify-transaction - verify by transaction code only (amount pre-filled by app)
 app.post('/verify-transaction', async (req, res) => {
-    const { transactionCode, amount, token, hardwareId } = req.body;
-    if (!transactionCode || !amount || !token || !hardwareId) {
-        return res.status(400).json({ error: 'transactionCode, amount, token and hardwareId required' });
+    const { transactionCode, token, hardwareId, amount } = req.body;
+    if (!transactionCode || !token || !hardwareId) {
+        return res.status(400).json({ error: 'transactionCode, token and hardwareId required' });
     }
 
-    // Validate transaction code format: 10 alphanumeric uppercase chars
+    // Validate transaction code format
     const code = transactionCode.toUpperCase().replace(/O/g, '0').trim();
     if (!/^[A-Z0-9]{8,12}$/.test(code)) {
         return res.status(400).json({ error: 'Invalid transaction code format. Should be like UD9QB03GS7' });
-    }
-
-    const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount < 1) {
-        return res.status(400).json({ error: 'Invalid amount' });
     }
 
     try {
@@ -198,34 +193,33 @@ app.post('/verify-transaction', async (req, res) => {
         if (!entry) return res.status(404).json({ error: 'Token not found or expired. Generate a new token.' });
         if (entry.paid) return res.json({ success: true, alreadyCredited: true });
 
-        // Check this transaction code hasn't been used before (anti-fraud)
+        // Check transaction code hasn't been used before (anti-fraud)
         const wallets = await getWallets();
-        const alreadyUsed = wallets.some(w => 
-            w.transactions?.some(t => t.mpesaRef === code)
-        );
+        const alreadyUsed = wallets.some(w => w.transactions?.some(t => t.mpesaRef === code));
         if (alreadyUsed) {
             return res.status(400).json({ error: 'This transaction code has already been used.' });
         }
 
-        // Credit the wallet
+        const creditAmount = parseFloat(amount) || entry.amount || 100;
+
+        // Credit wallet
         entry.paid = true;
-        entry.amount = parsedAmount;
+        entry.amount = creditAmount;
         entry.mpesaRef = code;
         await saveTokens(tokens);
 
         let wallet = wallets.find(w => w.hardwareId === hardwareId);
         if (!wallet) { wallet = { hardwareId, balanceKes: 0, transactions: [] }; wallets.push(wallet); }
 
-        wallet.balanceKes = (wallet.balanceKes || 0) + parsedAmount;
+        wallet.balanceKes = (wallet.balanceKes || 0) + creditAmount;
         wallet.lastTopUp = new Date().toISOString();
         wallet.transactions = wallet.transactions || [];
-        wallet.transactions.push({ type: 'topup', amount: parsedAmount, mpesaRef: code, token, date: new Date().toISOString() });
+        wallet.transactions.push({ type: 'topup', amount: creditAmount, mpesaRef: code, token, date: new Date().toISOString() });
         await saveWallets(wallets);
-
         await saveTokens(tokens.filter(t => t.token !== token.toUpperCase()));
 
-        console.log(`Transaction verified: ${code}, KES ${parsedAmount} for ${hardwareId.substring(0,8)}`);
-        res.json({ success: true, newBalance: wallet.balanceKes, amount: parsedAmount, receipt: code });
+        console.log(`Transaction verified: ${code}, KES ${creditAmount} for ${hardwareId.substring(0,8)}`);
+        res.json({ success: true, newBalance: wallet.balanceKes, amount: creditAmount, receipt: code });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
