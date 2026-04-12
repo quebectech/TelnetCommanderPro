@@ -51,7 +51,7 @@ app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend runnin
 // Admin panel
 app.get('/admin', (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TCP Admin</title>'
+    res.send('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TCP Admin</title> <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64,AAAB...">'
 + '<style>'
 + 'body{font-family:Arial,sans-serif;max-width:560px;margin:30px auto;padding:16px;background:#f0f2f5}'
 + 'h2{color:#0078D4;margin-bottom:2px}'
