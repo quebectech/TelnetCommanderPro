@@ -48,86 +48,52 @@ async function getMpesaToken() {
 // â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.get('/', (req, res) => res.json({ status: 'TelnetCommanderPro backend running v2.0.3' }));
 
-// Admin panel - paste WhatsApp message to auto-fill and credit
+// Admin panel
 app.get('/admin', (req, res) => {
-    res.send(`<!DOCTYPE html>
-<html>
-<head>
-<title>TCP Admin</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body{font-family:Arial,sans-serif;max-width:520px;margin:30px auto;padding:16px;background:#f5f5f5}
-  h2{color:#0078D4;margin-bottom:4px}
-  input,button,textarea{width:100%;padding:10px;margin:5px 0;border-radius:6px;border:1px solid #ccc;font-size:14px;box-sizing:border-box}
-  button{background:#0078D4;color:white;border:none;cursor:pointer;font-weight:bold}
-  .green{background:#28A745}.grey{background:#6c757d}
-  #result{margin-top:10px;padding:10px;border-radius:6px;display:none}
-  .success{background:#d4edda;color:#155724}.error{background:#f8d7da;color:#721c24}
-  .card{background:white;border-radius:8px;padding:14px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
-  .pending{background:#fff3cd;color:#856404;margin-top:8px;padding:10px;border-radius:6px;font-size:13px}
-  label{font-weight:bold;font-size:13px;color:#333;display:block;margin-top:8px}
-</style>
-</head>
-<body>
-<h2>ðŸ’° TCP Admin Panel</h2>
-<p style="color:#666;font-size:13px">Paste customer WhatsApp message to auto-fill fields</p>
-
-<div class="card">
-  <label>ðŸ“‹ Paste WhatsApp message:</label>
-  <textarea id="waMsg" rows="4" placeholder="TCP Top-Up Request&#10;Token: TCP-XXXXXX&#10;Amount: KES 100&#10;Hardware ID: ABCD1234" oninput="parseMsg()"></textarea>
-  <button class="grey" onclick="parseMsg()" style="margin-top:4px">ðŸ” Parse</button>
-</div>
-
-<div class="card">
-  <label>Token</label><input type="text" id="token" placeholder="TCP-XXXXXX" style="text-transform:uppercase;font-family:monospace;font-weight:bold"/>
-  <label>Amount (KES)</label><input type="number" id="amount" value="100"/>
-  <label>Hardware ID</label><input type="text" id="hwid" placeholder="Hardware ID" style="font-family:monospace"/>
-  <button class="green" onclick="credit()" style="margin-top:10px">âœ… Credit Wallet</button>
-  <div id="result"></div>
-</div>
-
-<div class="card">
-  <b>ðŸ“‹ Pending Tokens</b>
-  <button onclick="loadTokens()" style="width:auto;padding:6px 14px;margin-left:10px;font-size:12px">Refresh</button>
-  <div id="tokens" style="margin-top:8px"></div>
-</div>
-
-<script>
-function parseMsg(){
-  const m=document.getElementById('waMsg').value;
-  const t=m.match(/Token[:\\s]+([A-Z0-9\\-]{6,12})/i);
-  const a=m.match(/Amount[:\\s]+KES\\s*([\\d]+)/i);
-  const h=m.match(/Hardware ID[:\\s]+([A-Z0-9]+)/i);
-  if(t)document.getElementById('token').value=t[1].toUpperCase();
-  if(a)document.getElementById('amount').value=a[1];
-  if(h)document.getElementById('hwid').value=h[1];
-}
-async function credit(){
-  const res=document.getElementById('result');res.style.display='none';
-  try{
-    const r=await fetch('/admin/credit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({token:document.getElementById('token').value.toUpperCase(),
-        amount:parseFloat(document.getElementById('amount').value),
-        hardwareId:document.getElementById('hwid').value})});
-    const d=await r.json();res.style.display='block';
-    res.className=d.success?'success':'error';
-    res.innerHTML=d.success?'âœ… '+d.message:'âŒ '+(d.error||'Failed');
-  }catch(e){res.style.display='block';res.className='error';res.innerHTML='âŒ '+e.message;}
-}
-async function loadTokens(){
-  const div=document.getElementById('tokens');div.innerHTML='Loading...';
-  try{
-    const r=await fetch('/admin/tokens');const d=await r.json();
-    if(!d.tokens||d.tokens.length===0){div.innerHTML='<p>No pending tokens.</p>';return;}
-    div.innerHTML=d.tokens.map(t=>'<div class="pending"><b>'+t.token+'</b> | '+t.hardwareId.substring(0,12)+'...<br>'+(t.paid?'âœ… PAID KES '+t.amount:'â³ Waiting')+' | '+new Date(t.createdAt).toLocaleTimeString()+'<br><button onclick="fill(\''+t.token+'\',\''+t.hardwareId+'\')" style="width:auto;padding:4px 10px;margin-top:4px;font-size:12px">Fill</button></div>').join('');
-  }catch(e){div.innerHTML='Error: '+e.message;}
-}
-function fill(t,h){document.getElementById('token').value=t;document.getElementById('hwid').value=h;}
-loadTokens();
-</script>
-</body>
-</html>`);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TCP Admin</title>'
++ '<style>'
++ 'body{font-family:Arial,sans-serif;max-width:560px;margin:30px auto;padding:16px;background:#f0f2f5}'
++ 'h2{color:#0078D4;margin-bottom:2px}'
++ 'input,textarea{width:100%;padding:10px;margin:4px 0 8px;border-radius:6px;border:1px solid #ccc;font-size:14px;box-sizing:border-box}'
++ 'button{width:100%;padding:11px;border:none;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;color:#fff}'
++ 'button:disabled{background:#aaa!important;cursor:not-allowed}'
++ '.btn-blue{background:#0078D4}.btn-green{background:#28A745}.btn-sm{width:auto;padding:5px 12px;font-size:12px;margin-left:8px}'
++ '.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.1)}'
++ 'label{font-weight:bold;font-size:13px;color:#333;display:block;margin-bottom:2px}'
++ '.ok{background:#d4edda;color:#155724;padding:10px;border-radius:6px;margin-top:8px}'
++ '.err{background:#f8d7da;color:#721c24;padding:10px;border-radius:6px;margin-top:8px}'
++ '.tok{background:#fff3cd;color:#856404;padding:10px;border-radius:6px;margin-top:6px;font-size:13px}'
++ '</style></head><body>'
++ '<h2>TCP Admin Panel</h2>'
++ '<p style="color:#666;font-size:13px;margin-bottom:14px">Paste customer WhatsApp message to auto-fill fields</p>'
++ '<div class="card">'
++ '<label>Paste WhatsApp message:</label>'
++ '<textarea id="msg" rows="4" placeholder="TCP Top-Up Request\nToken: TCP-XXXXXX\nAmount: KES 100\nHardware ID: ABCD1234" oninput="onMsg()"></textarea>'
++ '<button id="parseBtn" class="btn-green" onclick="parseMsg()" disabled>Parse Message</button>'
++ '<div id="parseResult"></div>'
++ '</div>'
++ '<div class="card">'
++ '<label>Token</label><input id="token" placeholder="TCP-XXXXXX" style="text-transform:uppercase;font-family:monospace;font-weight:bold">'
++ '<label>Amount (KES)</label><input id="amount" type="number" value="100">'
++ '<label>Hardware ID</label><input id="hwid" placeholder="Hardware ID" style="font-family:monospace">'
++ '<button class="btn-green" onclick="credit()" style="margin-top:4px">Credit Wallet</button>'
++ '<div id="creditResult"></div>'
++ '</div>'
++ '<div class="card">'
++ '<b>Pending Tokens</b><button class="btn-blue btn-sm" onclick="loadTokens()">Refresh</button>'
++ '<div id="tokens" style="margin-top:8px"><i style="color:#999">Click Refresh to load</i></div>'
++ '</div>'
++ '<script>'
++ 'function onMsg(){var v=document.getElementById("msg").value.trim();document.getElementById("parseBtn").disabled=v.length<5;}'
++ 'function parseMsg(){var m=document.getElementById("msg").value;var t=m.match(/Token[:\\s]+([A-Z0-9\\-]{4,12})/i);var a=m.match(/Amount[:\\s]+KES\\s*([\\d]+)/i);var h=m.match(/Hardware\\s*ID[:\\s]+([A-Za-z0-9]+)/i);if(t)document.getElementById("token").value=t[1].toUpperCase();if(a)document.getElementById("amount").value=a[1];if(h)document.getElementById("hwid").value=h[1];var r=document.getElementById("parseResult");if(t||a||h){r.className="ok";r.innerHTML="Parsed OK - Token:"+(t?t[1]:"?")+", Amount:"+(a?a[1]:"?")+", HW:"+(h?h[1]:"?");}else{r.className="err";r.innerHTML="Could not parse. Check message format.";}}'
++ 'async function credit(){var r=document.getElementById("creditResult");r.innerHTML="Working...";r.className="";try{var res=await fetch("/admin/credit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:document.getElementById("token").value.toUpperCase(),amount:parseFloat(document.getElementById("amount").value),hardwareId:document.getElementById("hwid").value})});var d=await res.json();r.className=d.success?"ok":"err";r.innerHTML=d.success?"SUCCESS: "+d.message:"ERROR: "+(d.error||"Failed");}catch(e){r.className="err";r.innerHTML="ERROR: "+e.message;}}'
++ 'async function loadTokens(){var div=document.getElementById("tokens");div.innerHTML="Loading...";try{var res=await fetch("/admin/tokens");var d=await res.json();if(!d.tokens||!d.tokens.length){div.innerHTML="<p>No pending tokens.</p>";return;}div.innerHTML=d.tokens.map(function(t){return "<div class=\\"tok\\"><b>"+t.token+"</b> | HW: "+t.hardwareId.substring(0,14)+"<br>"+(t.paid?"PAID KES "+t.amount:"Waiting payment")+" | "+new Date(t.createdAt).toLocaleTimeString()+"<br><button class=\\"btn-blue btn-sm\\" onclick=\\"fill(\'"+t.token+"\',\'"+t.hardwareId+"\')\\" style=\\"margin-top:4px\\">Fill Fields</button></div>";}).join("");}catch(e){div.innerHTML="Error: "+e.message;}}'
++ 'function fill(t,h){document.getElementById("token").value=t;document.getElementById("hwid").value=h;}'
++ '<\/script></body></html>'
+    );
 });
+
 
 // GET /admin/tokens
 app.get('/admin/tokens', async (req, res) => {
